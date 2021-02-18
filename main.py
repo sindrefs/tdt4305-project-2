@@ -3,6 +3,7 @@ from pyspark import SparkContext, SparkConf
 import base64
 from datetime import datetime
 
+# TODO: Write that parsing from csv to "pretty" rdd could happen once
 
 def parse_path():
     parser = argparse.ArgumentParser()
@@ -62,6 +63,18 @@ def task_2_1(comments_rdd, posts_rdd):
     print("The average length of answer body is {}".format(answer_column_length.mean()))
 
 
+def task_2_2(posts_rdd, users_rdd):
+    questions = posts_rdd.map(lambda line: line.split("\t")).filter(
+        lambda line: line[1] == '1')  # Filter out non-questions
+    date_tuples = questions.map(
+        lambda line: (line[6], datetime.strptime(line[2], '%Y-%m-%d %H:%M:%S')))  # Dates is in column 2
+    latest_date_tuple = date_tuples.max(key=lambda x: x[1])
+    oldest_date_tuple = date_tuples.min(key=lambda x: x[1])
+    users_parsed = users_rdd.map(lambda line: line.split("\t"))
+    user_of_latest_date_tuple = users_parsed.filter(lambda user: int(user[0]) == int(latest_date_tuple[0]))
+    print("Username of latest post is {}".format(user_of_latest_date_tuple.first()[3]))
+    user_of_oldest_date_tuple = users_parsed.filter(lambda user: int(user[0]) == int(oldest_date_tuple[0]))
+    print("Username of oldest post is {}".format(user_of_oldest_date_tuple.first()[3]))
 
 
 def main():
@@ -93,28 +106,20 @@ def main():
 
     # Task 2.1
     print("\nTask 2.1 output below:")
-    task_2_1(comments_rdd, posts_rdd)
+    #task_2_1(comments_rdd, posts_rdd)
 
     # Task 2.2
     print("\nTask 2.2 output below:")
-    questions = posts_rdd.map(lambda line: line.split("\t")).filter(lambda line: line[1] == '1')  # Filter out non-questions
-    date_tuples = questions.map(lambda line: (line[6], datetime.strptime(line[2], '%Y-%m-%d %H:%M:%S')))  # Dates is in column 2
-    latest_date_tuple = date_tuples.max(key=lambda x: x[1])
-    oldest_date_tuple = date_tuples.min(key=lambda x: x[1])
+    #task_2_2(posts_rdd, users_rdd)
 
-    print(latest_date_tuple)
-    print(oldest_date_tuple)
+    # Task 2.3
+    questions = posts_rdd.map(lambda line: line.split("\t")).filter(
+        lambda line: line[1] == '1' and line[6] != '-1')  # Filter out non-questions
+    questions_usernames = questions.map(lambda x: x[0])
+    answers = posts_rdd.map(lambda line: line.split("\t")).filter(
+        lambda line: line[1] == '2' and line[1] != '-1')  # Filter out non-answers
+    answers_usernames = answers.map(lambda x: x[0])
 
-    '''
-    print("The average length of comment text is {}".format(
-        find_avg_length(comments_rdd, 2)))  # Comments text is located in column 2
-    print("The average length of question body is {}"
-          .format(find_avg_length(posts_rdd, 5, req={"check_columns_number": 1,
-                                                     "must_be": 1})))  # TODO: Add comment
-    print("The average length of answer body is {}"
-          .format(find_avg_length(posts_rdd, 5, req={"check_columns_number": 1,
-                                                     "must_be": 1})))  # TODO: Add comment
-    '''
 
 
 
