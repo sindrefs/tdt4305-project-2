@@ -2,6 +2,8 @@ import argparse
 from pyspark import SparkContext, SparkConf
 import base64
 from datetime import datetime
+from operator import add
+
 
 # TODO: Write that parsing from csv to "pretty" rdd could happen once
 
@@ -76,6 +78,18 @@ def task_2_2(posts_rdd, users_rdd):
     user_of_oldest_date_tuple = users_parsed.filter(lambda user: int(user[0]) == int(oldest_date_tuple[0]))
     print("Username of oldest post is {}".format(user_of_oldest_date_tuple.first()[3]))
 
+def task_2_3(posts_rdd):
+    questions = posts_rdd.map(lambda line: line.split("\t")).filter(
+        lambda line: line[1] == '1' and line[6] != '-1' and line[6] != 'NULL')  # Filter out non-questions
+    questions_usernames = questions.map(lambda x: (x[6], 1))
+    questions_username_max = questions_usernames.reduceByKey(add).max(key=lambda x: x[1])
+    answers = posts_rdd.map(lambda line: line.split("\t")).filter(
+        lambda line: line[1] == '2' and line[1] != '-1' and line[6] != 'NULL')  # Filter out non-answers
+    answers_usernames = answers.map(lambda x: (x[6], 1))
+    answers_username_max = answers_usernames.reduceByKey(add).max(key=lambda x: x[1])
+    print("The username that has posted the most questions is {} with {} posts".format(questions_username_max[0], questions_username_max[1]))
+    print("The username that has posted the most answers is {} with {} posts".format(answers_username_max[0], answers_username_max[1]))
+
 
 def main():
     path_to_data = parse_path()  # Parsing application specific arguments
@@ -113,15 +127,22 @@ def main():
     #task_2_2(posts_rdd, users_rdd)
 
     # Task 2.3
-    questions = posts_rdd.map(lambda line: line.split("\t")).filter(
-        lambda line: line[1] == '1' and line[6] != '-1')  # Filter out non-questions
-    questions_usernames = questions.map(lambda x: x[0])
-    answers = posts_rdd.map(lambda line: line.split("\t")).filter(
-        lambda line: line[1] == '2' and line[1] != '-1')  # Filter out non-answers
-    answers_usernames = answers.map(lambda x: x[0])
+    print("\nTask 2.3 output below:")
+    #task_2_3(posts_rdd)
+
+    # Task 2.4
+    print("\nTask 2.4 output below:")
+    task_2_4(badges_rdd)
 
 
 
+def task_2_4(badges_rdd):
+    badges = badges_rdd.map(lambda line: line.split("\t"))  # Filter out non-questions
+    badges_usernames = badges.map(lambda x: (x[0], 1))
+    questions_username_count = badges_usernames.reduceByKey(add)
+    questions_username_count_filtered = questions_username_count \
+        .filter(lambda x: x[1] < 3)  # Filtering out users with strictly less than three badges
+    print("There are {} users with strictly less than three badges".format(questions_username_count_filtered.count()))
 
 
 if __name__ == "__main__":
