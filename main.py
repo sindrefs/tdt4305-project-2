@@ -1,9 +1,15 @@
 import argparse
-from pyspark import SparkContext, SparkConf
 import base64
+from pyspark import SparkContext, SparkConf
 from datetime import datetime
 from operator import add
+from math import sqrt, log2
 
+from graphframes import *
+from pyspark.sql import SparkSession
+from pyspark.sql import SQLContext
+
+# NB! Using pyspark 3.0.1
 
 # TODO: Write that parsing from csv to "pretty" rdd could happen once
 
@@ -21,24 +27,6 @@ def parse_path():
 def print_number_of_rows(rdd, rdd_name):
     print("There is {} rows in {}".format(rdd.count(), rdd_name))
 
-'''
-def find_avg_length(rdd, column_number, decode=False, req=None):  # TODO: Mark decode to True as default
-
-    if req is not None:
-        column_length = rdd.map(lambda line:
-                                len(base64.b64decode(line).split("\t")[column_number])
-                                if decode else
-                                len(line.split("\t")[column_number]))
-    else:
-        column_length = rdd.map(lambda line:
-                                len(base64.b64decode(line).split("\t")[column_number])
-                                if decode else
-                                len(line.split("\t")[column_number]))
-
-    total_length = column_length.reduce(lambda a, b: a + b)
-    avg_length = total_length / rdd.count()
-    return avg_length
-'''
 
 def task_1_5(badges_rdd, comments_rdd, posts_rdd, users_rdd):
     print_number_of_rows(badges_rdd, "badges")
@@ -91,11 +79,50 @@ def task_2_3(posts_rdd):
     print("The username that has posted the most answers is {} with {} posts".format(answers_username_max[0], answers_username_max[1]))
 
 
+def task_2_4(badges_rdd):
+    badges = badges_rdd.map(lambda line: line.split("\t"))  # Filter out non-questions
+    badges_usernames = badges.map(lambda x: (x[0], 1))
+    questions_username_count = badges_usernames.reduceByKey(add)
+    questions_username_count_filtered = questions_username_count \
+        .filter(lambda x: x[1] < 3)  # Filtering out users with strictly less than three badges
+    print("There are {} users with strictly less than three badges".format(questions_username_count_filtered.count()))
+
+
+def task_2_5(users_rdd):
+    users_parsed = users_rdd.map(lambda line: line.split("\t"))
+    users_with_votes = users_parsed \
+        .map(lambda line: (line[0], int(line[7]), int(line[8])))  # User(0), upvote(1), downvote(2)
+    only_upvotes = users_parsed.map(lambda line: int(line[7]))
+    only_downvotes = users_parsed.map(lambda line: int(line[8]))
+    avg_upvotes = only_upvotes.mean()
+    avg_downvotes = only_downvotes.mean()
+    diffs = users_with_votes.map(lambda user: (user[1] - avg_upvotes) * (user[2] - avg_downvotes))
+    dividend = diffs.sum()
+    diff_squared_upvotes = only_upvotes.map(lambda vote: (vote - avg_upvotes) ** 2)
+    diff_squared_downvotes = only_downvotes.map(lambda vote: (vote - avg_downvotes) ** 2)
+    divisor = sqrt(diff_squared_upvotes.sum()) * sqrt(diff_squared_downvotes.sum())
+    r = dividend / divisor
+    print("r_{XY} is {}".format(r))
+
+
+def task_2_6(comments_rdd):
+    comments = comments_rdd.map(lambda line: (line.split("\t")[4], 1))
+    number_of_rows = comments.count()
+    comments_reduced = comments.reduceByKey(add)
+    terms = comments_reduced.map(lambda user: (user[1] / number_of_rows) * log2(user[1] / number_of_rows))
+    h = -terms.sum()
+    print("H(x) is {}".format(h))
+
+
 def main():
     path_to_data = parse_path()  # Parsing application specific arguments
 
     conf = SparkConf().setAppName("TDT4305 project").setMaster("local")
     sc = SparkContext(conf=conf)
+
+    #  Dependency and import for part 3
+    sc.addPyFile("graphframes-0.8.1-spark3.0-s_2.12.jar")
+    import graphframes
 
     # Task 1
     badges_rdd = sc.textFile("{}/badges.csv".format(path_to_data))
@@ -132,17 +159,50 @@ def main():
 
     # Task 2.4
     print("\nTask 2.4 output below:")
-    task_2_4(badges_rdd)
+    #task_2_4(badges_rdd)
+
+    # Task 2.5
+    print("\nTask 2.5 output below:")
+    #task_2_5(users_rdd)
+
+    # Task 2.6
+    print("\nTask 2.6 output below:")
+    #task_2_6(comments_rdd)
+
+    sqlContext = SQLContext(sc)
+
+    users_with_display_name = users_rdd.map(lambda line: (line.split("\t")[0], line.split("\t")[3]))
+
+    # Create a Vertex DataFrame with unique ID column "id"
+    v = sqlContext.createDataFrame([
+        ("a", "Alice", 34),
+        ("b", "Bob", 36),
+        ("c", "Charlie", 30),
+    ], ["id", "name", "age"])
+
+    # Create an Edge DataFrame with "src" and "dst" columns
+    e = sqlContext.createDataFrame([
+        ("a", "b", "friend"),
+        ("b", "c", "follow"),
+        ("c", "b", "follow"),
+    ], ["src", "dst", "relationship"])
 
 
+    # Create a GraphFrame
+    g = graphframes.GraphFrame(v, e)
 
-def task_2_4(badges_rdd):
-    badges = badges_rdd.map(lambda line: line.split("\t"))  # Filter out non-questions
-    badges_usernames = badges.map(lambda x: (x[0], 1))
-    questions_username_count = badges_usernames.reduceByKey(add)
-    questions_username_count_filtered = questions_username_count \
-        .filter(lambda x: x[1] < 3)  # Filtering out users with strictly less than three badges
-    print("There are {} users with strictly less than three badges".format(questions_username_count_filtered.count()))
+    # Query: Get in-degree of each vertex.
+    g.inDegrees.show()
+    '''
+    # Query: Count the number of "follow" connections in the graph.
+    g.edges.filter("relationship = 'follow'").count()
+
+    # Run PageRank algorithm, and show results.
+    results = g.pageRank(resetProbability=0.01, maxIter=20)
+    results.vertices.select("id", "pagerank").show()
+    '''
+
+
 
 
 if __name__ == "__main__":
