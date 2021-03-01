@@ -126,7 +126,6 @@ def main():
     conf = SparkConf().setAppName("TDT4305 project").setMaster("local")
     sc = SparkContext(conf=conf)
 
-
     #  Dependency and import for part 3
     sc.addPyFile("graphframes-0.8.1-spark3.0-s_2.12.jar")
     import graphframes
@@ -179,6 +178,9 @@ def main():
     print("\nTask 2.6 output below:")
     # task_2_6(comments_rdd)
 
+    # Task 3
+    print("\nTask 3 output below:")
+
     # Task 3.1
     # Creating the RDD in which later can be converted to DFs, then used for a graph
     sqlContext = SQLContext(sc)
@@ -196,8 +198,8 @@ def main():
     all_edges = posts_and_comments_joined \
         .map(lambda line: (line[1], 1))  # K->(user id of comment, user id of post), V->1
     edges_with_count = all_edges.reduceByKey(add)  # K->(user id of comment, user id of post), V->number of edges
-    edges_with_count = edges_with_count\
-        .map(lambda line: (line[0][0], line[0][1], line[1])) #  (user id of comment, user id of post, number of edges)
+    edges_with_count = edges_with_count \
+        .map(lambda line: (line[0][0], line[0][1], line[1]))  # (user id of comment, user id of post, number of edges)
 
     # Task 3.2
     # Converting the RDDs to DFs of edges and vertices, then used to create a graph
@@ -206,28 +208,22 @@ def main():
     vertices = sqlContext.createDataFrame(users_with_display_name).toDF("id", "displayName")
     edges = sqlContext.createDataFrame(edges_with_count).toDF("src", "dst", "w")
 
+    # Task 3.3
     edges.registerTempTable("edges")
+    # Grouping by src (id of user commenting), and the  summing their weights (outgoing comments to other users)
+    # Collumns src and sum(w)
+    top_10_commenters = sqlContext.sql("SELECT  src, SUM(w) FROM edges GROUP BY src ORDER BY SUM(w) DESC LIMIT 10")
+    top_10_commenters.show()
 
-    res = sqlContext.sql("SELECT src, SUM(w) FROM edges GROUP BY src ORDER BY SUM(w) DESC")
-    res.show()
+    # Columns src, sum(w), id (from vertices) and displaName (from vertices)
+    top_10_commenters_with_displayname = top_10_commenters.join(vertices,top_10_commenters.src == vertices.id)
+    top_10_commenters_with_displayname.show()
 
-    '''
-    # Create the graph using GraphFrame
-    graph = graphframes.GraphFrame(vertices, edges)
-
-    # Query: Get in-degree of each vertex.
-    #graph.inDegrees.show()
-    top = graph.pageRank(resetProbability=0.1, maxIter=1)
-    top.outDegrees.show()
-    '''
-    '''
-    # Query: Count the number of "follow" connections in the graph.
-    g.edges.filter("relationship = 'follow'").count()
-
-    # Run PageRank algorithm, and show results.
-    results = g.pageRank(resetProbability=0.01, maxIter=20)
-    results.vertices.select("id", "pagerank").show()
-    '''
+    # Writing edges and vertices DFs to csv files
+    edges.coalesce(1).write.mode("overwrite").format("com.databricks.spark.csv")\
+        .option("header", "true").save("edges.csv")
+    vertices.coalesce(1).write.mode("overwrite").format("com.databricks.spark.csv")\
+        .option("header", "true").save("vertices.csv")
 
 
 if __name__ == "__main__":
