@@ -6,7 +6,6 @@ from datetime import datetime
 from operator import add
 from math import sqrt, log2
 
-
 # Not in use for this part of the project
 from graphframes import *
 # from pyspark.sql import SparkSession
@@ -27,8 +26,6 @@ def parse_path():
 
 def main():
     path_to_data = parse_path()  # Parsing application specific arguments
-
-
 
     spark = SparkSession.builder.appName('fun').getOrCreate()
     vertices = spark.createDataFrame([('1', 'Carter', 'Derrick', 50),
@@ -58,8 +55,6 @@ def main():
     g.edges.show()
     ## Check the number of edges of each vertex
     g.degrees.show()
-
-
 
 
 if __name__ == "__main__":
